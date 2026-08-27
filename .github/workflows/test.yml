@@ -1,163 +1,115 @@
-name: Run tests
+name: Build and test
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
-  BUILD_TEMP_DIR: "build"
-  LIBGL_ALWAYS_SOFTWARE: 1
+  BUILD_TEMP_DIR: build/ci
+  CMAKE_BUILD_PARALLEL_LEVEL: "3"
+  LIBGL_ALWAYS_SOFTWARE: "1"
 
 jobs:
-  test:
-    name: Test on ${{ matrix.os }} ${{ matrix.platform }}  (Python ${{ matrix.python-version }})
+  build-and-test:
+    name: ${{ matrix.name }} / Python 3.12
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - "ubuntu-24.04"
-          - "ubuntu-22.04"
-          - "ubuntu-20.04"
-          - "macos-14"
         include:
-          - os: "ubuntu-24.04"
-            platform: "x86_64"
-          - os: "ubuntu-22.04"
-            platform: "x86_64"
-          - os: "ubuntu-20.04"
-            platform: "x86_64"
-          - os: "macos-14"
-            platform: "arm64"
-
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+          - name: Linux AMD64
+            os: ubuntu-24.04
+            arch: x86_64
+          - name: macOS ARM64
+            os: macos-15
+            arch: arm64
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository and submodules
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
 
-      - name: Checkout submodules
-        run: |
-          git submodule update --init
-          cd vendor/nanobind && \
-            git submodule update --init --recursive
-          cd ../maplibre-native && \
-            git submodule update --init --recursive \
-              vendor/boost \
-              vendor/cpp-httplib \
-              vendor/earcut.hpp \
-              vendor/eternal \
-              vendor/googletest \
-              vendor/polylabel \
-              vendor/protozero \
-              vendor/mapbox-base \
-              vendor/unique_resource \
-              vendor/unordered_dense \
-              vendor/vector-tile \
-              vendor/wagyu \
-              vendor/zip-archive
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "${{ matrix.arch }}"
 
-      - name: Install Linux dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Linux build and rendering dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get -y install \
-            curl \
+          sudo apt-get install -y --no-install-recommends \
             build-essential \
-            cmake \
-            ninja-build \
             ccache \
-            pkg-config \
             libcurl4-openssl-dev \
+            libegl1-mesa-dev \
+            libgles2-mesa-dev \
+            libgl1-mesa-dri \
             libicu-dev \
-            libjpeg-turbo8-dev \
+            libjpeg-dev \
+            libopengl-dev \
             libpng-dev \
-            libwebp-dev \
             libprotobuf-dev \
             libuv1-dev \
+            libwebp-dev \
             libx11-dev \
-            libegl-dev \
-            libopengl-dev \
-            libgles2-mesa-dev \
+            ninja-build \
+            pkg-config \
             xvfb
-          /usr/sbin/update-ccache-symlinks
 
-      - name: fix Ubuntu 24.04 dependencies
-        if: ${{ matrix.os == 'ubuntu-24.04' }}
-        run: |
-          sudo apt-get install -y software-properties-common && \
-          sudo add-apt-repository -y ppa:kisak/kisak-mesa && \
-          sudo apt-get update && \
-          sudo apt-get install -y libglx-mesa0
-
-      - name: Upgrade Ubuntu 20.04 GCC
-        if: ${{ matrix.os == 'ubuntu-20.04' }}
-        run: |
-          sudo apt-get install -y software-properties-common && \
-          sudo add-apt-repository --update -y ppa:ubuntu-toolchain-r/test && \
-          sudo apt-get update && \
-          sudo apt-get -y --fix-broken install gcc-13 g++-13 && \
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 131 --slave /usr/bin/g++ g++ /usr/bin/g++-13 --slave /usr/bin/gcov gcov /usr/bin/gcov-13 && \
-          gcc -v
-
-      - name: Install MacOS dependencies
+      - name: Install macOS build dependencies
         if: runner.os == 'macOS'
         env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
-          HOMEBREW_NO_INSTALL_CLEANUP: 1
-        run: |
-          brew install ccache ninja
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install ccache ninja
 
-      - name: Install python
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh && \
-          . $HOME/.cargo/env && \
-          uv python install ${{ matrix.python-version }} && \
-          uv venv .venv
-          echo "VIRTUAL_ENV=.venv" >> $GITHUB_ENV
-          echo "$PWD/.venv/bin" >> $GITHUB_PATH
-
-      - name: Prepare ccache
-        run: ccache --clear --set-config cache_dir=~/.ccache
-
-      - name: Cache ccache
+      - name: Restore compiler cache
         uses: actions/cache@v4
-        env:
-          cache-name: ccache-v1
         with:
           path: ~/.ccache
-          key: ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}-${{ github.sha }}-${{ github.head_ref }}
+          key: ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**', 'include/**', '.gitmodules') }}
           restore-keys: |
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}-${{ github.sha }}
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}
-      - name: Clear ccache statistics
-        run: |
-          ccache --zero-stats --set-config cache_dir=~/.ccache
-          ccache --max-size=2G --set-config cache_dir=~/.ccache
-          ccache --show-stats --set-config cache_dir=~/.ccache
+            ccache-${{ runner.os }}-${{ runner.arch }}-
 
-      - name: Build package
+      - name: Configure compiler cache
+        run: |
+          ccache --set-config=cache_dir="$HOME/.ccache"
+          ccache --max-size=2G
+          ccache --zero-stats
+
+      - name: Build pymgl
         env:
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: |
-          sudo mkdir -p $BUILD_TEMP_DIR
-          sudo chown -R $(id -u):$(id -g) $BUILD_TEMP_DIR
-          uv pip install -e .[dev,test]
+          python -m pip install --upgrade pip
+          python -m pip install --verbose --editable ".[test]"
 
-      - name: Run Linux tests
+      - name: Run tests on Linux
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a --server-args="-screen 0 1024x768x24 -ac +render -noreset" \
-            build/tests/pymgl_test
-          xvfb-run -a --server-args="-screen 0 1024x768x24 -ac +render -noreset" \
-            python -m pytest pymgl/tests
+            python -m pytest -q
 
-      - name: Run MacOS tests
+      - name: Run tests on macOS
         if: runner.os == 'macOS'
-        run: |
-          build/tests/pymgl_test
-          python -m pytest pymgl/tests
+        run: python -m pytest -q
+
+      - name: Show compiler cache statistics
+        if: always()
+        run: ccache --show-stats
