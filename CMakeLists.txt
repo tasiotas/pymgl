@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
 
 project("_pymgl" VERSION "")
 
@@ -16,7 +16,7 @@ endif()
 
 set(MLN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/vendor/maplibre-native)
 
-# Adapted from maplibre-native/CMakeLists.txt
+# Match MapLibre Native's compiler requirements.
 cmake_policy(SET CMP0063 NEW)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 20)
@@ -42,8 +42,24 @@ SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
 SET(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
 SET(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
 
-# Build mln-core
-include(${PROJECT_SOURCE_DIR}/mln-core/maplibre-native-core.cmake)
+# Build MapLibre Native through its supported CMake entry point.  The previous
+# pymgl build copied MapLibre's source list into this repository, which made
+# new core components (including PMTiles/MLT) silently disappear on upgrades.
+set(BUILD_TESTING OFF CACHE BOOL "Disable MapLibre Native's test suite" FORCE)
+set(MLN_WITH_CORE_ONLY OFF CACHE BOOL "Include default platform file sources" FORCE)
+set(MLN_WITH_GLFW OFF CACHE BOOL "Do not build the GLFW application" FORCE)
+set(MLN_WITH_NODE OFF CACHE BOOL "Do not build Node bindings" FORCE)
+set(MLN_WITH_PMTILES ON CACHE BOOL "Enable PMTiles, including MLT tiles" FORCE)
+set(MLN_WITH_WERROR OFF CACHE BOOL "Do not promote dependency warnings" FORCE)
+
+if(APPLE)
+    set(MLN_WITH_OPENGL OFF CACHE BOOL "Disable OpenGL on Apple platforms" FORCE)
+    set(MLN_WITH_METAL ON CACHE BOOL "Use Metal for headless rendering" FORCE)
+elseif(UNIX)
+    set(MLN_WITH_OPENGL ON CACHE BOOL "Use OpenGL for headless rendering" FORCE)
+endif()
+
+add_subdirectory(${MLN_SOURCE_DIR} maplibre-native EXCLUDE_FROM_ALL)
 
 # Include headers for pymgl and build the wrapper
 include_directories(${PROJECT_SOURCE_DIR}/include)
@@ -54,11 +70,14 @@ add_library(
     ${PROJECT_SOURCE_DIR}/src/spng.c
 )
 
+# The wrapper exposes style mutation helpers that MapLibre currently keeps in
+# its internal conversion API.
+target_include_directories(mgl_wrapper PRIVATE ${MLN_SOURCE_DIR}/src)
+
 # link against mln-core
 target_link_libraries(
-    mgl_wrapper PRIVATE
-    Mapbox::Base
-    mln-core
+    mgl_wrapper PUBLIC
+    mbgl-core
 )
 
 # Build Python module
@@ -79,6 +98,10 @@ target_link_libraries(
 set_target_properties(_pymgl PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 target_compile_definitions(_pymgl PRIVATE VERSION_INFO=${VERSION_INFO})
 
-# C++ tests
-include(CTest)
-add_subdirectory(${PROJECT_SOURCE_DIR}/tests)
+# C++ tests are optional because MapLibre Native intentionally owns the
+# top-level BUILD_TESTING switch in an embedded build.
+option(PYMGL_BUILD_CPP_TESTS "Build pymgl's C++ tests" OFF)
+if(PYMGL_BUILD_CPP_TESTS)
+    include(CTest)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/tests)
+endif()

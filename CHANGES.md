@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Unreleased
+
+### Improvements
+
+- upgraded MapLibre Native to the `ios-v6.28.0` release (`18545ca`)
+- added PMTiles support, including automatic MLT detection and FastPFOR decoding
+- replaced the copied MapLibre source manifest with MapLibre's upstream CMake target
+- upgraded nanobind for current Python releases
+
 ## 0.5.0 (9/30/2024)
 
 ### Breaking changes

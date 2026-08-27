@@ -263,6 +263,61 @@ Example:
 }
 ```
 
+### Local MLT PMTiles
+
+MLT-encoded PMTiles archives are supported. Use an absolute `file://` URL
+inside the `pmtiles://` scheme. The PMTiles header is used to detect MLT
+automatically, and FastPFOR integer decoding is enabled by pymgl.
+
+```Python
+import json
+from pathlib import Path
+
+from pymgl import Map
+
+archive = Path("/absolute/path/to/data.pmtiles")
+style = json.dumps({
+    "version": 8,
+    "sources": {
+        "local": {
+            "type": "vector",
+            "url": f"pmtiles://{archive.resolve().as_uri()}",
+        }
+    },
+    "layers": [{
+        "id": "roads",
+        "type": "line",
+        "source": "local",
+        "source-layer": "highways",
+        "paint": {"line-color": "#d46a4c"},
+    }],
+})
+
+png = Map(style, 512, 512, longitude=-122.55, latitude=50.10, zoom=7).renderPNG()
+```
+
+The optional end-to-end test accepts a local archive path:
+
+```bash
+PYMGL_MLT_PMTILES=/path/to/data.pmtiles pytest -q pymgl/tests/test_mlt_pmtiles.py
+```
+
+## Building from source
+
+Clone recursively so MapLibre Native, its MLT decoder, and nanobind are
+available, then build in a virtual environment:
+
+```bash
+git clone --recursive https://github.com/brendan-ward/pymgl.git
+cd pymgl
+python -m venv .venv
+.venv/bin/pip install -U pip cmake ninja setuptools wheel versioneer
+.venv/bin/pip install .
+```
+
+This branch builds MapLibre Native through its upstream CMake target rather
+than maintaining a duplicate list of core source files.
+
 ### Local files
 
 GeoJSON files and other local file assets are supported, but must be provided

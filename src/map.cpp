@@ -124,7 +124,8 @@ Map::Map(const std::string &style,
                                       mbgl::MapOptions()
                                           .withMapMode(mbgl::MapMode::Static)
                                           .withSize(frontend->getSize())
-                                          .withPixelRatio(ratio.value_or(1)),
+                                          .withPixelRatio(ratio.value_or(1))
+                                          .withFastPFOREnabled(true),
                                       resourceOptions.withTileServerOptions(tileServerOptions));
 
     if (style.find("{") == 0) {
