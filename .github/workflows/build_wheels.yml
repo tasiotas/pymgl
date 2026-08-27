@@ -1,297 +1,119 @@
-name: Build wheels
+name: Build and publish wheels
 
 on:
-  push:
-    paths:
-      - ".github/workflows/build_wheels.yml"
-      - "MANIFEST.in"
-      - "pyproject.toml"
-      - "setup.py"
-    branches:
-      - main
-    tags:
-      - "v*"
-  pull_request:
-    paths:
-      - ".github/workflows/build_wheels.yml"
-      - "MANIFEST.in"
-      - "pyproject.toml"
-      - "setup.py"
   workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
 
 env:
-  CIBW_SKIP: "cp38-* pp* *musllinux* *i686* *ppc64le* *s390x*"
-  CIBW_ARCHS: "auto64"
-  CIBW_BUILD_VERBOSITY: 1
+  CIBW_BUILD: "cp313-*"
+  CIBW_BUILD_VERBOSITY: "1"
+  CIBW_SKIP: "*-musllinux_*"
+  CIBW_TEST_REQUIRES: "pytest Pillow numpy pixelmatch python-dotenv"
+  CIBW_TEST_COMMAND_LINUX: >-
+    xvfb-run -a --server-args="-screen 0 1024x768x24 -ac +render -noreset"
+    python -m pytest --pyargs pymgl -q
+  CIBW_TEST_COMMAND_MACOS: "python -m pytest --pyargs pymgl -q"
+  CIBW_BEFORE_ALL_LINUX: >-
+    dnf install -y
+    cmake
+    ninja-build
+    pkgconfig
+    libcurl-devel
+    libjpeg-turbo-devel
+    libpng-devel
+    libwebp-devel
+    libuv-devel
+    libX11-devel
+    mesa-libGL-devel
+    mesa-libEGL-devel
+    mesa-dri-drivers
+    xorg-x11-server-Xvfb
+  CIBW_ENVIRONMENT_LINUX: >-
+    CMAKE_BUILD_PARALLEL_LEVEL=3
+    LIBGL_ALWAYS_SOFTWARE=1
+  CIBW_ENVIRONMENT_MACOS: >-
+    CMAKE_BUILD_PARALLEL_LEVEL=3
+    MACOSX_DEPLOYMENT_TARGET=12.0
 
 jobs:
-  build-wheels-linux:
-    name: Build wheels on linux
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Checkout submodules
-        run: |
-          git submodule update --init
-          cd vendor/nanobind && \
-            git submodule update --init --recursive
-          cd ../maplibre-native && \
-            git submodule update --init --recursive \
-              vendor/boost \
-              vendor/cpp-httplib \
-              vendor/earcut.hpp \
-              vendor/eternal \
-              vendor/googletest \
-              vendor/polylabel \
-              vendor/protozero \
-              vendor/mapbox-base \
-              vendor/unique_resource \
-              vendor/unordered_dense \
-              vendor/vector-tile \
-              vendor/wagyu \
-              vendor/zip-archive
-
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          install: true
-          buildkitd-flags: --debug
-
-      - name: Build derived manylinux image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ci/Dockerfile.manylinux_2_28_x86_64
-          tags: pymgl-manylinux_2_28_x86_64
-          push: false
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-        env:
-          BUILDKIT_PROGRESS: plain
-
-      - name: Prepare ccache volume
-        run: |
-          sudo mkdir -p /mnt/ccache
-          sudo chmod 777 /mnt/ccache
-          docker create -v /mnt/ccache:/ccache:rw --name ccache pymgl-manylinux_2_28_x86_64
-
-      - name: Cache ccache
-        uses: actions/cache@v4
-        env:
-          cache-name: ccache-v1
-        with:
-          path: /mnt/ccache
-          key: ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}-${{ github.sha }}-${{ github.head_ref }}
-          restore-keys: |
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}-${{ github.sha }}
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}
-
-      - name: Build wheels
-        run: |
-          docker run -e CCACHE_DIR=/ccache --volumes-from ccache -v $PWD:/app pymgl-manylinux_2_28_x86_64 ci/build_linux_wheels.sh
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pymgl-wheel-manylinux_2_28-x86_64
-          path: ./dist/*.whl
-          compression-level: 0
-
-  build-wheels-macos:
-    name: Build wheels on MacOS
-    runs-on: macos-14
-    env:
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
-      MACOSX_DEPLOYMENT_TARGET: "12"
-      CIBW_BUILD_FRONTEND: "build[uv]"
-
-    steps:
-      - name: Install MacOS dependencies
-        if: runner.os == 'macOS'
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
-          HOMEBREW_NO_INSTALL_CLEANUP: 1
-
-        run: |
-          brew install ccache ninja
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: ">=0.4"
-
-      - name: Prepare ccache
-        run: |
-          ccache --set-config cache_dir=~/.ccache
-          ccache --clear
-
-      - name: Cache ccache
-        uses: actions/cache@v4
-        env:
-          cache-name: ccache-v1
-        with:
-          path: ~/.ccache
-          key: ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}-${{ github.sha }}-${{ github.head_ref }}
-          restore-keys: |
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}-${{ github.sha }}
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}-${{ github.ref }}
-            ${{ env.cache-name }}-${{ matrix.os }}-${{ github.job }}
-
-      - name: Clear ccache statistics
-        run: |
-          ccache --zero-stats
-          ccache --max-size=2G
-          ccache --show-stats
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Checkout submodules
-        run: |
-          git submodule update --init
-          cd vendor/nanobind && \
-            git submodule update --init --recursive
-          cd ../maplibre-native && \
-            git submodule update --init --recursive \
-              vendor/boost \
-              vendor/cpp-httplib \
-              vendor/earcut.hpp \
-              vendor/eternal \
-              vendor/googletest \
-              vendor/polylabel \
-              vendor/protozero \
-              vendor/mapbox-base \
-              vendor/unique_resource \
-              vendor/unordered_dense \
-              vendor/vector-tile \
-              vendor/wagyu \
-              vendor/zip-archive
-
-      - name: Build wheels
-        run: |
-          ci/build_macos_wheels.sh
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pymgl-wheel-macos-arm64
-          path: ./dist/*.whl
-          compression-level: 0
-
-  test-wheels:
-    name: TST ${{ matrix.os }} ${{ matrix.platform }} (Python ${{ matrix.python-version }})
-    needs: [build-wheels-linux, build-wheels-macos]
-    runs-on: ${{ matrix.os }}
+  build-wheels:
+    name: ${{ matrix.name }} / CPython 3.13
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - "ubuntu-24.04"
-          - "ubuntu-22.04"
-          - "ubuntu-20.04"
-          - "macos-14"
         include:
-          - os: "ubuntu-24.04"
-            platform: "x86_64"
-            wheel: pymgl-wheel-manylinux_2_28-x86_64
-          - os: "ubuntu-22.04"
-            platform: "x86_64"
-            wheel: pymgl-wheel-manylinux_2_28-x86_64
-          - os: "ubuntu-20.04"
-            platform: "x86_64"
-            wheel: pymgl-wheel-manylinux_2_28-x86_64
-          - os: "macos-14"
-            platform: "arm64"
-            wheel: pymgl-wheel-macos-arm64
-
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
-
-    env:
-      PLATFORM_OS: ${{ matrix.os }}
-      LIBGL_ALWAYS_SOFTWARE: 1
-      LD_LIBRARY_PATH: "$LD_LIBRARY_PATH:/usr/local/lib"
+          - name: Linux AMD64
+            runner: ubuntu-24.04
+            platform: linux
+            arch: x86_64
+          - name: macOS ARM64
+            runner: macos-15
+            platform: macos
+            arch: arm64
 
     steps:
-      - name: Download wheels from artifacts
-        uses: actions/download-artifact@v4
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v7
         with:
-          pattern: ${{ matrix.wheel }}
-          path: wheelhouse
-          merge-multiple: true
+          fetch-depth: 0
+          submodules: recursive
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install libegl1 xvfb
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: ">=0.4"
-
-      - name: Install pymgl and deps
-        run: |
-          uv python install ${{ matrix.python-version }}
-          uv venv .venv
-          echo "VIRTUAL_ENV=.venv" >> $GITHUB_ENV
-          echo "$PWD/.venv/bin" >> $GITHUB_PATH
-          uv pip install pytest Pillow numpy pixelmatch python-dotenv
-          uv pip install --no-cache --pre --no-index --find-links wheelhouse pymgl
-          uv pip list
-
-      - name: Test wheels on Linux
-        if: runner.os == 'Linux'
-        run: |
-          # Fix location for hardcoded certs file in different location on manylinux image
-          sudo mkdir -p /etc/pki/tls/certs
-          sudo ln -s /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt
-          xvfb-run -a --server-args="-screen 0 1024x768x24 -ac +render -noreset" pytest --pyargs pymgl -v
-
-      - name: Test wheels on MacOS
+      - name: Prepare macOS build tools
         if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
-          cd ..
-          pytest --pyargs pymgl -v
+          brew untap aws/tap || true
+          brew install ninja
 
-  publish:
-    name: Publish to GitHub / PyPI
-    needs: [test-wheels]
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/pymgl
+      - name: Build and test wheel
+        uses: pypa/cibuildwheel@v4.2.0
+        env:
+          CIBW_PLATFORM: ${{ matrix.platform }}
+          CIBW_ARCHS: ${{ matrix.arch }}
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pymgl-wheel-${{ matrix.platform }}-${{ matrix.arch }}
+          path: wheelhouse/*.whl
+          compression-level: 0
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-wheels
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
     permissions:
-      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing to PyPI
-      contents: write # this permission is required for the Github release action
-
-    # only publish on tags
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/')
+      contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v8
         with:
           pattern: pymgl-wheel-*
           path: dist
           merge-multiple: true
 
-      - name: Publish wheels to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Create checksums
+        working-directory: dist
+        run: sha256sum *.whl > SHA256SUMS
 
       - name: Create GitHub Release
-        id: create_release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Version ${{ github.ref_name }}
-          tag_name: ${{ github.ref }}
-          draft: false
-          prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          dist/*.whl
+          dist/SHA256SUMS
+          --repo "${GITHUB_REPOSITORY}"
+          --title "pymgl ${GITHUB_REF_NAME}"
+          --generate-notes
+          --verify-tag

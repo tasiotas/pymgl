@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## 0.5.1 (8/27/2026)
 
 ### Improvements
 
