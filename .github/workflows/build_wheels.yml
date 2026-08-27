@@ -28,6 +28,7 @@ env:
     ninja-build
     pkgconfig
     libcurl-devel
+    libicu-devel
     libjpeg-turbo-devel
     libpng-devel
     libwebp-devel
