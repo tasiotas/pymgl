@@ -2,6 +2,11 @@ name: Build and publish wheels
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing tag to publish after successful wheel tests (leave empty for artifacts only)
+        required: false
+        type: string
   push:
     tags: ["v*"]
 
@@ -61,6 +66,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
           submodules: recursive
 
       - name: Prepare macOS build tools
@@ -89,7 +95,9 @@ jobs:
   publish-release:
     name: Publish GitHub Release
     needs: build-wheels
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -109,11 +117,12 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: >-
-          gh release create "${GITHUB_REF_NAME}"
+          gh release create "${RELEASE_TAG}"
           dist/*.whl
           dist/SHA256SUMS
           --repo "${GITHUB_REPOSITORY}"
-          --title "pymgl ${GITHUB_REF_NAME}"
+          --title "pymgl ${RELEASE_TAG}"
           --generate-notes
           --verify-tag
