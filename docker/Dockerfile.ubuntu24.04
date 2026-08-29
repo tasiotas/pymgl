@@ -4,7 +4,7 @@ ARG PYTHON_VERSION="3.12"
 
 WORKDIR /app
 
-ENV DISPLAY=:99
+ENV EGL_PLATFORM=surfaceless
 ENV XDG_RUNTIME_DIR=/tmp
 ENV LIBGL_ALWAYS_SOFTWARE=1
 ENV DEBIAN_FRONTEND=noninteractive
@@ -34,12 +34,9 @@ RUN apt-get update && \
     libwebp-dev \
     libprotobuf-dev \
     libuv1-dev \
-    libx11-dev \
     libegl-dev \
     libopengl-dev \
     libgles2-mesa-dev \
-    # runtime dependencies
-    xvfb \
     # debugging utilities
     valgrind && \
     /usr/sbin/update-ccache-symlinks && \
@@ -47,7 +44,7 @@ RUN apt-get update && \
     apt-get install -y software-properties-common && \
     add-apt-repository -y ppa:kisak/kisak-mesa && \
     apt-get update && \
-    apt-get install -y libglx-mesa0
+    apt-get install -y libegl-mesa0 libgl1-mesa-dri
 
 # Install python and test deps using uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \

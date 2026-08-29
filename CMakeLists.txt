@@ -36,11 +36,14 @@ if(NOT("${CMAKE_BUILD_TYPE}" STREQUAL "Debug"))
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
 endif()
 
-# Hide warnings about no symbols
-SET(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
-SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
-SET(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
-SET(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+# Hide warnings about no symbols. These flags are specific to Apple's ranlib;
+# GNU ranlib interprets the flag text as individual invalid options.
+if(APPLE)
+    set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+    set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+    set(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+    set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+endif()
 
 # Build MapLibre Native through its supported CMake entry point.  The previous
 # pymgl build copied MapLibre's source list into this repository, which made
@@ -56,7 +59,9 @@ if(APPLE)
     set(MLN_WITH_OPENGL OFF CACHE BOOL "Disable OpenGL on Apple platforms" FORCE)
     set(MLN_WITH_METAL ON CACHE BOOL "Use Metal for headless rendering" FORCE)
 elseif(UNIX)
-    set(MLN_WITH_OPENGL ON CACHE BOOL "Use OpenGL for headless rendering" FORCE)
+    set(MLN_WITH_OPENGL ON CACHE BOOL "Use OpenGL rendering" FORCE)
+    set(MLN_WITH_EGL ON CACHE BOOL "Use EGL headless contexts" FORCE)
+    set(MLN_WITH_X11 OFF CACHE BOOL "Disable X11" FORCE)
 endif()
 
 add_subdirectory(${MLN_SOURCE_DIR} maplibre-native EXCLUDE_FROM_ALL)

@@ -65,11 +65,36 @@ class CMakeBuild(build_ext):
         subprocess.check_call(["cmake", "--build", "."] + build_args, cwd=tmp_dir)
 
 
+release_version = os.environ.get("PYMGL_RELEASE_VERSION")
 cmdclass = versioneer.get_cmdclass()
+
+if release_version:
+    versioneer_build_py = cmdclass["build_py"]
+
+    class ReleaseBuildPy(versioneer_build_py):
+        """Write the pre-tag release version into the packaged runtime."""
+
+        def run(self):
+            super().run()
+            version_file = Path(self.build_lib) / "pymgl" / "_version.py"
+            version_file.write_text(
+                "# Generated for a pre-tag release build.\n"
+                f"__version__ = {release_version!r}\n"
+                "def get_versions():\n"
+                "    return {\"version\": __version__, \"full-revisionid\": \"\", "
+                "\"dirty\": False, \"error\": None, \"date\": None}\n",
+                encoding="utf-8",
+            )
+
+    cmdclass["build_py"] = ReleaseBuildPy
+
 cmdclass.update({"build_ext": CMakeBuild})
 
 setup(
-    version=versioneer.get_version(),
+    # Allows exact release artifacts to be prepared before the corresponding
+    # signed tag is created. Normal development and tagged builds still use
+    # Versioneer's Git-derived version.
+    version=release_version or versioneer.get_version(),
     include_package_data=True,
     exclude_package_data={"": ["*.h", "*.c"]},
     cmdclass=cmdclass,

@@ -16,6 +16,7 @@ concurrency:
 env:
   BUILD_TEMP_DIR: build/ci
   CMAKE_BUILD_PARALLEL_LEVEL: "3"
+  EGL_PLATFORM: "surfaceless"
   LIBGL_ALWAYS_SOFTWARE: "1"
 
 jobs:
@@ -67,10 +68,8 @@ jobs:
             libprotobuf-dev \
             libuv1-dev \
             libwebp-dev \
-            libx11-dev \
             ninja-build \
-            pkg-config \
-            xvfb
+            pkg-config
 
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
@@ -105,8 +104,9 @@ jobs:
       - name: Run tests on Linux
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a --server-args="-screen 0 1024x768x24 -ac +render -noreset" \
-            python -m pytest -q
+          unset DISPLAY
+          python ci/headless_egl_smoke.py
+          python -m pytest -q
 
       - name: Run tests on macOS
         if: runner.os == 'macOS'

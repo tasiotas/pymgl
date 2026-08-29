@@ -438,12 +438,13 @@ via `homebrew`:
 -   libwebp-dev
 -   libprotobuf-dev
 -   libjpeg-turbo8-dev
--   libx11-dev
 -   libegl-dev
 -   libopengl-dev
--   xvfb
+-   libgl1-mesa-dri
 
-To run on Linux, XVFB must also be running; otherwise the process will segfault.
+Linux rendering uses a surfaceless EGL context. No X11 display or Xvfb process
+is required; set `EGL_PLATFORM=surfaceless` in headless environments. A Mesa DRI
+driver is still required when the host does not provide a physical GPU.
 
 See [`docker/README.md`](./docker/README.md) for more information.
 
@@ -559,14 +560,17 @@ in VSCode.
 
 ##### Building wheels
 
-Most wheels are automatically built by Github when pushing a new version tag.
-Linux Arm64 wheels must be built locally on an Arm64 machine (e.g., MacOS host).
+Most wheels are automatically built by GitHub when pushing a new version tag.
+Linux x86_64 and Arm64 wheels can also be built locally with Docker.
 
 These are created using the manylinux_2_28 Docker container.
 
 ```bash
-docker build -f ci/Dockerfile.manylinux_2_28_aarch64 -t pymgl-manylinux_2_28_aarch64 .
-docker run -v "$PWD/:/app" pymgl-manylinux_2_28_aarch64 ci/build_linux_wheels.sh
+docker build --platform linux/aarch64 -f ci/Dockerfile.manylinux_2_28_aarch64 -t pymgl-manylinux_2_28_aarch64 .
+docker run --platform linux/aarch64 --rm -e PYMGL_RELEASE_VERSION=0.5.2 -v "$PWD/:/app" pymgl-manylinux_2_28_aarch64 ci/build_linux_wheels.sh
+
+docker build --platform linux/amd64 -f ci/Dockerfile.manylinux_2_28_x86_64 -t pymgl-manylinux_2_28_x86_64 .
+docker run --platform linux/amd64 --rm -e PYMGL_RELEASE_VERSION=0.5.2 -v "$PWD/:/app" pymgl-manylinux_2_28_x86_64 ci/build_linux_wheels.sh
 ```
 
 This will create aarch64 wheels in `dist` that can be uploaded directly to PyPI.

@@ -19,8 +19,9 @@ Then from within the container, run:
 ```bash
 uv pip install -e .[dev,test] -v
 
-# tests require virtual display
-Xvfb ${DISPLAY} -screen 0 "1024x768x24" -ac +render -noreset -nolisten tcp  &
+# Linux rendering uses surfaceless EGL and does not require DISPLAY or Xvfb.
+unset DISPLAY
+export EGL_PLATFORM=surfaceless
 
 export MAPBOX_TOKEN=<your token>
 
@@ -31,10 +32,10 @@ export MAPBOX_TOKEN=<your token>
 pytest pymgl/tests
 ```
 
-You can also run the tests using `xvfb-run` to sidestep the need to start Xvfb:
+To run only the headless EGL smoke test:
 
 ```bash
-xvfb-run -a --server-args="-screen 0 1024x768x24 -ac +render -noreset" /tmp/build/tests/pymgl_test
+pytest pymgl/tests/test_headless_egl.py -q -s
 ```
 
 To copy rendered PNG files from the running container:

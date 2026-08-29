@@ -1,8 +1,10 @@
-FROM quay.io/pypa/manylinux_2_28_x86_64:2024-09-23-f703caa
+FROM quay.io/pypa/manylinux_2_28_x86_64@sha256:4dc41da7df20400310c80d162a2fe2d2c2f3d9734d8dec20f6b9843711618deb
 
 WORKDIR /app
 
 ENV BUILD_TEMP_DIR=/tmp/build
+ENV EGL_PLATFORM=surfaceless
+ENV LIBGL_ALWAYS_SOFTWARE=1
 
 RUN dnf -y install \
     curl \
@@ -14,12 +16,10 @@ RUN dnf -y install \
     libpng-devel \
     libwebp-devel \
     libuv-devel \
-    libX11-devel \
     mesa-libGL-devel \
     mesa-libEGL-devel \
     mesa-libOSMesa \
-    mesa-dri-drivers \
-    xorg-x11-server-Xvfb
+    mesa-dri-drivers
 
 # Install newer version of libicu
 RUN dnf install -y git && \
@@ -41,7 +41,7 @@ RUN curl -L -o /tmp/ccache.tar.gz https://github.com/ccache/ccache/releases/down
 
 # install python versions
 RUN mkdir /uv && \
-    uv python install 3.9 3.10 3.11 3.12 3.13 && \
+    uv python install 3.13 && \
     mkdir /wheels && \
     mkdir /tmp/build
 

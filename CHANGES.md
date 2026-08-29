@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.5.2 (8/28/2026)
+
+### Bug fixes
+
+- Linux wheels now use headless EGL contexts with the OpenGL renderer, so maps
+  render without an X11 display or Xvfb.
+
 ## 0.5.1 (8/27/2026)
 
 ### Improvements

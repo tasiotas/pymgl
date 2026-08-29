@@ -19,7 +19,9 @@ env:
   CIBW_SKIP: "*-musllinux_*"
   CIBW_TEST_REQUIRES: "pytest Pillow numpy pixelmatch python-dotenv"
   CIBW_TEST_COMMAND_LINUX: >-
-    xvfb-run -a --server-args="-screen 0 1024x768x24 -ac +render -noreset"
+    env -u DISPLAY EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1
+    python {project}/ci/headless_egl_smoke.py &&
+    env -u DISPLAY EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1
     python -m pytest --pyargs pymgl -q
   CIBW_TEST_COMMAND_MACOS: "python -m pytest --pyargs pymgl -q"
   CIBW_BEFORE_ALL_LINUX: >-
@@ -33,13 +35,12 @@ env:
     libpng-devel
     libwebp-devel
     libuv-devel
-    libX11-devel
     mesa-libGL-devel
     mesa-libEGL-devel
     mesa-dri-drivers
-    xorg-x11-server-Xvfb
   CIBW_ENVIRONMENT_LINUX: >-
     CMAKE_BUILD_PARALLEL_LEVEL=3
+    EGL_PLATFORM=surfaceless
     LIBGL_ALWAYS_SOFTWARE=1
   CIBW_ENVIRONMENT_MACOS: >-
     CMAKE_BUILD_PARALLEL_LEVEL=3
